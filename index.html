@@ -1363,7 +1363,7 @@
 
             liff.sendMessages([{
                 type: 'text',
-                text: `【予約フォーム】\nお名前：${formData.name}\n希望日時：\n ${formData.dates[0]}\n希望日時：\n ${formData.selectedSymptom}\nメッセージ：${formData.message}`
+                text: `【予約フォーム】\nお名前：${formData.name}\n希望日時：\n ${formData.dates[0]}\nメニュー：${formData.selectedSymptom}\nメッセージ：${formData.message}`
             }]).then(() => {
                 alert('当日キャンセルは無いようにお願いいたします。キャンセル料発生いたします。');
                 liff.closeWindow();
