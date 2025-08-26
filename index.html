@@ -786,912 +786,522 @@
 
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
     <script>
-        let selectedSymptom = [];  // 配列として定義
-        let selectedFullDate = '';
-        let currentDate = new Date();
-        let availabilityCache = {};
-        let totalAmount = 0; // 合計金額を格納する変数
-        let menuPrice = 0; // メニューの価格
-        let optionsPrice = 0; // オプションの合計価格
-        let totalMinutes = 0; // 合計時間（分）
-        let selectedVisitTime = 0; // 訪問時間
+        let selectedSymptom = [];   // 選択中メニュー（配列）
+let selectedFullDate = '';
+let currentDate = new Date();
+let availabilityCache = {};
+let totalAmount = 0;
+let menuPrice = 0;
+let optionsPrice = 0;
+let totalMinutes = 0;
+let selectedVisitTime = 0;  // 訪問時間（必要ならボタンで設定）
+let selectedMenuTime = 0;   // メニュー所要時間（分）
 
-        let menuTimes = {
-            '来店打合せ予約': 90,
-            'オンライン打合せ予約': 90,
-        };
+// メニューの基準時間
+const menuTimes = {
+  '来店打合せ予約': 90,
+  'オンライン打合せ予約': 90,
+};
 
-        let selectedMenuTime = 0;
+document.addEventListener('DOMContentLoaded', function () {
+  // LIFF初期化
+  liff.init({ liffId: '2007890432-Qx1VEejP' })
+    .then(() => console.log('LIFF初期化成功'))
+    .catch(err => console.log('LIFF初期化失敗', err));
 
-        // 初期化処理を統一
-        document.addEventListener('DOMContentLoaded', function () {
-            // LIFF初期化
-            liff.init({
-                liffId: '2007890432-Qx1VEejP'
-            }).then(() => {
-                console.log('LIFF初期化成功');
-            }).catch((err) => {
-                console.log('LIFF初期化失敗', err);
-            });
+  // 前回入力の復元
+  const savedName = localStorage.getItem('name');
+  const savedPhone = localStorage.getItem('phone');
+  if (savedName) document.getElementById('name').value = savedName;
+  if (savedPhone) document.getElementById('phone').value = savedPhone;
 
-            // 前回の入力内容を復元
-            const savedName = localStorage.getItem('name');
-            const savedPhone = localStorage.getItem('phone');
-            if (savedName) document.getElementById('name').value = savedName;
-            if (savedPhone) document.getElementById('phone').value = savedPhone;
+  // 初期はカレンダー非表示
+  const calendarContainer = document.querySelector('.calendar-container');
+  if (calendarContainer) calendarContainer.style.display = 'none';
 
-            // 初期状態でカレンダーを非表示
-            const calendarContainer = document.querySelector('.calendar-container');
-            if (calendarContainer) {
-                calendarContainer.style.display = 'none';
-            }
+  setupSmoothScroll();
+  setupEventListeners();
 
-            // スムーズスクロール設定
-            setupSmoothScroll();
+  // 初回ロード
+  fetchAvailability(currentDate);
+});
 
-            // イベントリスナー設定
-            setupEventListeners();
+/* ---------- UI基本 ---------- */
 
-            // 初期カレンダー読み込み
-            fetchAvailability(currentDate);
+function setupSmoothScroll() {
+  document.querySelectorAll('.side-nav a').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      const targetId = this.getAttribute('href').substring(1);
+      const targetElement = document.getElementById(targetId);
+      if (targetElement) {
+        window.scrollTo({ top: targetElement.offsetTop - 20, behavior: 'smooth' });
+      }
+    });
+  });
+}
+
+function setupEventListeners() {
+  const nameInput = document.getElementById('name');
+  if (nameInput) nameInput.addEventListener('input', updateDisplayInfo);
+
+  // 症状（メニュー）ボタン
+  document.querySelectorAll('.symptoms button').forEach(button => {
+    button.addEventListener('click', () => {
+      // カレンダー表示制御（選択があれば表示）
+      const calendarContainer = document.querySelector('.calendar-container');
+      if (document.querySelectorAll('.symptoms button.active').length > 0) {
+        calendarContainer.style.display = 'block';
+      } else {
+        calendarContainer.style.display = 'none';
+      }
+      updateDisplayInfo();
+    });
+  });
+
+  // 訪問時間ボタン
+  document.querySelectorAll('.visit-buttons button').forEach(button => {
+    button.addEventListener('click', updateDisplayInfo);
+  });
+}
+
+function saveInput(id) {
+  const el = document.getElementById(id);
+  if (el) localStorage.setItem(id, el.value);
+}
+
+function scrollToElement(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function updateDisplayInfo() {
+  const name = (document.getElementById('name')?.value) || '';
+
+  const selectedSymptomText = selectedSymptom.length > 0
+    ? `<span style="color:#13ca5e;"><strong>【メニュー】</strong></span><br>・${selectedSymptom.join('<br>')}`
+    : '・メニューが未選択です';
+
+  totalMinutes = (selectedMenuTime || 0) + (selectedVisitTime || 0);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  const totalTimeText = `<span style="color:#13ca5e;"><strong>【所要時間】</strong></span><br>・${h > 0 ? h + '時間' : ''}${m}分`;
+
+  const selectedDateText = selectedFullDate
+    ? `<span style="color:#13ca5e;"><strong>【希望日時】</strong></span><br>・${selectedFullDate}`
+    : '・日時が未選択です';
+
+  const displayInfo = document.getElementById('displayInfo');
+  if (displayInfo) {
+    displayInfo.innerHTML = `
+      <div class="info-row">
+        <p><span style="color:#13ca5e;"><strong>【お名前】</strong></span><br>・${name}</p>
+        <button class="edit-button" onclick="scrollToElement('name')">修正する</button>
+      </div>
+      <hr>
+      <div class="info-row">
+        <p>${selectedSymptomText}</p>
+        <button class="edit-button" onclick="scrollToElement('course')">修正する</button>
+      </div>
+      <hr>
+      <div class="info-row">
+        <p>${totalTimeText}</p>
+      </div>
+      <hr>
+      <div class="info-row">
+        <p>${selectedDateText}</p>
+        <button class="edit-button" onclick="scrollToElement('calendar1')">修正する</button>
+      </div>
+      <hr>
+    `;
+  }
+}
+
+/* ---------- メニュー選択 ---------- */
+
+function selectSymptom(button, treatmentId) {
+  // 日時リセット
+  selectedFullDate = '';
+
+  // 単一選択にする
+  document.querySelectorAll('.symptoms button').forEach(btn => {
+    if (btn !== button) btn.classList.remove('active');
+  });
+
+  // トグル
+  button.classList.toggle('active');
+
+  const treatmentText = document.getElementById('treatment-text');
+
+  if (button.classList.contains('active')) {
+    const selectedMenu = button.textContent.trim();
+    selectedMenuTime = menuTimes[selectedMenu] ?? 90; // デフォルト90分
+    selectedSymptom = [selectedMenu];
+    menuPrice = parseInt(button.getAttribute('data-price'), 10) || 0;
+
+    if (treatmentText) {
+      treatmentText.innerHTML = `<div style="text-align: left;"><strong>所要時間：${selectedMenuTime}分</strong></div>`;
+      treatmentText.style.display = 'block';
+      button.parentNode.insertBefore(treatmentText, button.nextSibling);
+    }
+  } else {
+    selectedMenuTime = 0;
+    selectedSymptom = [];
+    menuPrice = 0;
+    if (treatmentText) treatmentText.style.display = 'none';
+  }
+
+  fetchAvailability(currentDate);
+  updateDisplayInfo();
+}
+
+function updateTotalAmount() {
+  totalAmount = (menuPrice || 0) + (optionsPrice || 0);
+  updateDisplayInfo();
+}
+
+function selectVisit(element) {
+  // 日時リセット
+  selectedFullDate = '';
+  document.querySelectorAll('.visit-buttons button').forEach(btn => btn.classList.remove('active'));
+  element.classList.add('active');
+
+  fetchAvailability(currentDate);
+  updateDisplayInfo();
+}
+
+/* ---------- 日付選択 ---------- */
+
+function selectDate(cell) {
+  if (cell.classList.contains('unavailable')) return;
+
+  // 既存選択を解除
+  document.querySelectorAll('.calendar td.selected').forEach(td => td.classList.remove('selected'));
+  cell.classList.add('selected');
+
+  const selectedDayISO = cell.getAttribute('data-date');
+  const timeCell = cell.parentElement?.cells[0];
+  const selectedTime = timeCell ? timeCell.textContent : '';
+
+  if (selectedDayISO && selectedTime) {
+    const date = new Date(selectedDayISO);
+    selectedFullDate =
+      `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日 ${selectedTime}`;
+  }
+  updateDisplayInfo();
+}
+
+/* ---------- 予約データ取得 ---------- */
+
+async function fetchAvailability(date) {
+  const startTime = new Date(date);
+  const endTime = new Date(date);
+  endTime.setDate(endTime.getDate() + 7);
+
+  const cacheKey = startTime.toISOString() + endTime.toISOString();
+
+  if (availabilityCache[cacheKey]) {
+    const cached = availabilityCache[cacheKey];
+    updateCalendar(cached.availability, cached.businessDays);
+    return;
+  }
+
+  // ▼ Apps Script エンドポイント（必要に応じて1本に統一）
+  const url =
+    'https://script.google.com/macros/s/AKfycbwaeisSr_4LEaQVr8r-XI8ALdUeFPQp6F0fBnOUT8bnGYG0vg2Iya-kmbsJbazcKzbnAw/exec' +
+    `?startTime=${startTime.toISOString()}&endTime=${endTime.toISOString()}`;
+
+  try {
+    showLoadingSpinner();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    // 営業日イベント抽出（title or summary どちらでも対応）
+    const businessDays = data
+      .filter(ev => (ev.summary === '営業日' || ev.title === '営業日'))
+      .map(ev => ({ start: new Date(ev.startTime), end: new Date(ev.endTime) }));
+
+    availabilityCache[cacheKey] = { availability: data, businessDays };
+    updateCalendar(data, businessDays);
+  } catch (e) {
+    console.error('Error fetching availability:', e);
+    // 失敗時も空で更新（全✕フォールバック）
+    updateCalendar([], []);
+  } finally {
+    hideLoadingSpinner();
+  }
+}
+
+/* ---------- カレンダー描画 ---------- */
+
+function updateCalendar(availability, businessDays) {
+  const calendar = document.getElementById('calendar1');
+  if (!calendar) return;
+
+  const table = calendar.querySelector('table tbody');
+  if (!table) return;
+
+  // 表示する時間帯
+  const times = [
+    '10:00', '10:30', '11:00', '11:30',
+    '12:00', '12:30', '13:00', '13:30',
+    '14:00', '14:30', '15:00', '15:30',
+    '16:00', '16:30', '17:00', '17:30',
+    '18:00', '18:30', '19:00'
+  ];
+
+  // 初回：行生成
+  if (table.rows.length === 0) {
+    for (const t of times) {
+      const row = document.createElement('tr');
+      const timeCell = document.createElement('td');
+      timeCell.textContent = t;
+      timeCell.style.fontWeight = 'bold';
+      row.appendChild(timeCell);
+
+      for (let i = 0; i < 7; i++) {
+        const cell = document.createElement('td');
+        cell.style.cursor = 'pointer';
+        cell.style.textAlign = 'center';
+        cell.addEventListener('click', () => selectDate(cell));
+        row.appendChild(cell);
+      }
+      table.appendChild(row);
+    }
+  }
+
+  // ヘッダー更新
+  updateCalendarHeader(currentDate);
+
+  // セル初期化
+  for (let r of table.rows) {
+    for (let i = 1; i < r.cells.length; i++) {
+      const cell = r.cells[i];
+      cell.textContent = '';
+      cell.removeAttribute('data-date');
+      cell.classList.remove('available', 'unavailable', 'selected');
+      cell.style.color = '';
+      cell.style.backgroundColor = '';
+    }
+  }
+
+  const now = new Date();
+
+  // 営業日ウィンドウが存在するか（存在しない場合にフォールバック動作を有効化）
+  const hasBusinessWindows = businessDays && businessDays.length > 0;
+
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(currentDate);
+    day.setDate(day.getDate() + i);
+
+    // その日の営業ウィンドウ（高速化のため当日分だけ抽出）
+    const windowsOfDay = (businessDays || []).filter(w => {
+      const s = new Date(w.start);
+      const e = new Date(w.end);
+      return s.toDateString() === day.toDateString() || e.toDateString() === day.toDateString();
+    });
+
+    for (let j = 0; j < times.length; j++) {
+      const cell = table.rows[j].cells[i + 1];
+
+      const slotStart = new Date(day);
+      const [hh, mm] = times[j].split(':').map(Number);
+      slotStart.setHours(hh, mm, 0, 0);
+
+      // 所要時間（メニュー + 訪問）
+      const duration = (selectedMenuTime || 90) + (selectedVisitTime || 0);
+      const slotEnd = new Date(slotStart);
+      slotEnd.setMinutes(slotEnd.getMinutes() + duration);
+
+      // data-date
+      cell.setAttribute('data-date', slotStart.toISOString());
+
+      // 1) 過去は✕
+      if (slotStart < now) {
+        markX(cell);
+        continue;
+      }
+
+      // 2) 日跨ぎは✕
+      if (slotEnd.getDate() !== slotStart.getDate()) {
+        markX(cell);
+        continue;
+      }
+
+      // 3) 営業ウィンドウ内か？
+      let withinBusiness = false;
+
+      if (hasBusinessWindows) {
+        withinBusiness = windowsOfDay.some(w => {
+          const s = new Date(w.start);
+          const e = new Date(w.end);
+          return slotStart >= s && slotEnd <= e;
         });
-
-        // スムーズスクロール設定
-        function setupSmoothScroll() {
-            document.querySelectorAll('.side-nav a').forEach(anchor => {
-                anchor.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const targetId = this.getAttribute('href').substring(1);
-                    const targetElement = document.getElementById(targetId);
-                    if (targetElement) {
-                        window.scrollTo({
-                            top: targetElement.offsetTop - 20,
-                            behavior: 'smooth'
-                        });
-                    }
-                });
-            });
-        }
-
-        // イベントリスナー設定
-        function setupEventListeners() {
-            // 名前入力時の更新
-            const nameInput = document.getElementById('name');
-            if (nameInput) {
-                nameInput.addEventListener('input', updateDisplayInfo);
-            }
-
-            // 症状ボタンのイベント設定
-            document.querySelectorAll('.symptoms button').forEach(button => {
-                button.addEventListener('click', () => {
-                    updateDisplayInfo();
-
-                    // カレンダー表示制御
-                    const calendarContainer = document.querySelector('.calendar-container');
-                    if (document.querySelectorAll('.symptoms button.active').length > 0) {
-                        calendarContainer.style.display = 'block';
-                    } else {
-                        calendarContainer.style.display = 'none';
-                    }
-                });
-            });
-
-            // 訪問ボタンのイベント設定
-            document.querySelectorAll('.visit-buttons button').forEach(button => {
-                button.addEventListener('click', updateDisplayInfo);
-            });
-        }
-
-        // 入力内容をローカルストレージに保存
-        function saveInput(id) {
-            const element = document.getElementById(id);
-            if (element) {
-                localStorage.setItem(id, element.value);
-            }
-        }
-
-        function updateDisplayInfo() {
-            const nameInput = document.getElementById('name');
-            const name = nameInput ? nameInput.value : '';
-
-            const selectedSymptomText = selectedSymptom.length > 0
-                ? `<span style="color:#13ca5e;"><strong>【メニュー】</strong></span><br>・${selectedSymptom.join('<br>')}`
-                : '・メニューが未選択です';
-
-            // 総時間の計算を修正
-            totalMinutes = selectedMenuTime + selectedVisitTime;
-            let hours = Math.floor(totalMinutes / 60);
-            let minutes = totalMinutes % 60;
-            let totalTimeText = `<span style="color:#13ca5e;"><strong>【所要時間】</strong></span><br>・${hours > 0 ? hours + '時間' : ''}${minutes}分`;
-
-            const selectedDateText = selectedFullDate ? `<span style="color:#13ca5e;"><strong>【希望日時】</strong></span><br>・${selectedFullDate}` : '・日時が未選択です';
-
-            const displayInfo = document.getElementById('displayInfo');
-            if (displayInfo) {
-                displayInfo.innerHTML = `
-                    <div class="info-row">
-                        <p><span style="color:#13ca5e;"><strong>【お名前】</strong></span><br>・${name}</p>
-                        <button class="edit-button" onclick="scrollToElement('name')">修正する</button>
-                    </div>
-                    <hr>
-                    <div class="info-row">
-                        <p>${selectedSymptomText}</p>
-                        <button class="edit-button" onclick="scrollToElement('course')">修正する</button>
-                    </div>
-                    <hr>
-                    <div class="info-row">
-                        <p>${totalTimeText}</p>
-                    </div>
-                    <hr>
-                    <div class="info-row">
-                        <p>${selectedDateText}</p>
-                        <button class="edit-button" onclick="scrollToElement('calendar1')">修正する</button>
-                    </div>
-                    <hr>
-                `;
-            }
-        }
-
-        // スクロール関数
-        function scrollToElement(id) {
-            const element = document.getElementById(id);
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-
-        function selectSymptom(button, treatmentId) {
-            console.log('selectSymptom called with:', button.textContent, treatmentId);
-
-            // 選択された日時をリセット
-            selectedFullDate = '';
-
-            // 他のボタンの選択を解除
-            document.querySelectorAll('.symptoms button').forEach(btn => {
-                if (btn !== button) {
-                    btn.classList.remove('active');
-                }
-            });
-
-            // 現在のボタンの選択状態を切り替える
-            button.classList.toggle('active');
-
-            const treatmentText = document.getElementById('treatment-text');
-
-            if (button.classList.contains('active')) {
-                // 選択されたメニューの時間を取得して保存
-                const selectedMenu = button.textContent;
-                selectedMenuTime = menuTimes[selectedMenu] || 90; // デフォルト90分
-                selectedSymptom = [selectedMenu]; // 選択されたメニュー名を配列として保存
-                menuPrice = parseInt(button.getAttribute('data-price'), 10) || 0;  // メニューの価格を取得
-
-                // 治療時間テキストを設定
-                if (treatmentText) {
-                    let timeText = '';
-                    switch (treatmentId) {
-                        case 'treatment1':
-                            timeText = '<div style="text-align: left;"><strong>所要時間：90分</strong></div>';
-                            break;
-                        case 'treatment2':
-                            timeText = '<div style="text-align: left;"><strong>所要時間：90分</strong></div>';
-                            break;
-                        default:
-                            timeText = '<div style="text-align: left;"><strong>所要時間：90分</strong></div>';
-                    }
-                    treatmentText.innerHTML = timeText;
-                    treatmentText.style.display = 'block';
-
-                    // テキストをボタンの後に移動
-                    button.parentNode.insertBefore(treatmentText, button.nextSibling);
-                }
-            } else {
-                // 選択解除された場合
-                selectedMenuTime = 0;
-                selectedSymptom = [];
-                menuPrice = 0;
-
-                if (treatmentText) {
-                    treatmentText.style.display = 'none';
-                }
-            }
-
-            console.log('選択されたメニューの時間:', selectedMenuTime);
-
-            // カレンダーを更新
-            fetchAvailability(currentDate);
-
-            // 表示を更新
-            updateDisplayInfo();
-        }
-
-        function updateTotalAmount() {
-            totalAmount = menuPrice + optionsPrice;
-            updateDisplayInfo();
-        }
-
-        function selectVisit(element) {
-            // 選択された日時をリセット
-            selectedFullDate = '';
-
-            document.querySelectorAll('.visit-buttons button').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            element.classList.add('active');
-
-            // カレンダーを更新
-            fetchAvailability(currentDate);
-            updateDisplayInfo();
-        }
-
-        function selectDate(cell) {
-            // "unavailable" クラスが付いている場合はクリックを無効化
-            if (cell.classList.contains('unavailable')) {
-                console.log('Unavailable date clicked');
-                return;
-            }
-
-            console.log('Date selected:', cell);
-
-            // 既に選択されているセルの選択を解除
-            document.querySelectorAll('.calendar td.selected').forEach(td => {
-                td.classList.remove('selected');
-            });
-
-            // 新しいセルを選択状態にする
-            cell.classList.add('selected');
-
-            // 選択された日付と時間を取得
-            const selectedDay = cell.getAttribute('data-date');
-            const timeCell = cell.parentElement.cells[0]; // 時間セル
-            const selectedTime = timeCell ? timeCell.textContent : '';
-
-            if (selectedDay && selectedTime) {
-                const date = new Date(selectedDay);
-                selectedFullDate = `${date.getFullYear()}年${('0' + (date.getMonth() + 1)).slice(-2)}月${('0' + date.getDate()).slice(-2)}日 ${selectedTime}`;
-                console.log('Selected full date:', selectedFullDate);
-            }
-
-            // 希望日時を即座に更新
-            updateDisplayInfo();
-        }
-
-        async function fetchAvailability(date) {
-            console.log('Fetching availability for:', date);
-
-            const startTime = new Date(date);
-            const endTime = new Date(date);
-            endTime.setDate(endTime.getDate() + 7);
-
-            const cacheKey = startTime.toISOString() + endTime.toISOString();
-
-            // キャッシュを確認
-            if (availabilityCache[cacheKey]) {
-                console.log('Using cached data');
-                updateCalendar(availabilityCache[cacheKey].availability, availabilityCache[cacheKey].businessDays);
-                return;
-            }
-
-            const url = 'https://script.google.com/macros/s/AKfycbyH7eDXmIDVrCtCv3Qyswq95UFVv9c5HwryAKXR1QEU7A2vaVRA_A6vDQizJce1ISAqCg/exec' +
-                `?startTime=${startTime.toISOString()}&endTime=${endTime.toISOString()}`;
-
-            try {
-                showLoadingSpinner();
-                const response = await fetch(url);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                console.log('Fetched data:', data);
-
-                // 営業日の情報を抽出
-                const businessDays = data.filter(event => event.summary === "営業日").map(event => {
-                    return {
-                        start: new Date(event.startTime),
-                        end: new Date(event.endTime)
-                    };
-                });
-
-                // データをキャッシュに保存
-                availabilityCache[cacheKey] = { availability: data, businessDays: businessDays };
-
-                updateCalendar(data, businessDays);
-            } catch (error) {
-                console.error('Error fetching availability:', error);
-                // エラー時もカレンダーを更新（オフラインモード）
-                updateCalendar([], []);
-            } finally {
-                hideLoadingSpinner();
-            }
-        }
-
-        function updateCalendar(availability, businessDays) {
-            console.log('Updating calendar with:', availability.length, 'events');
-        
-            const calendar = document.getElementById('calendar1');
-            if (!calendar) {
-                console.error('Calendar element not found');
-                return;
-            }
-        
-            const table = calendar.querySelector('table tbody');
-            if (!table) {
-                console.error('Calendar table body not found');
-                return;
-            }
-        
-            const times = [
-                '10:00', '10:30', '11:00', '11:30',
-                '12:00', '12:30', '13:00', '13:30',
-                '14:00', '14:30', '15:00', '15:30',
-                '16:00', '16:30', '17:00', '17:30',
-                '18:00', '18:30', '19:00'
-            ];
-        
-            // テーブルが空の場合、行を作成
-            if (table.rows.length === 0) {
-                console.log('Creating calendar table structure');
-                for (const time of times) {
-                    const row = document.createElement('tr');
-                    const timeCell = document.createElement('td');
-                    timeCell.textContent = time;
-                    timeCell.style.fontWeight = 'bold';
-                    row.appendChild(timeCell);
-        
-                    for (let i = 0; i < 7; i++) {
-                        const cell = document.createElement('td');
-                        cell.style.cursor = 'pointer';
-                        cell.style.textAlign = 'center';
-                        cell.addEventListener('click', () => selectDate(cell));
-                        row.appendChild(cell);
-                    }
-        
-                    table.appendChild(row);
-                }
-            }
-        
-            // テーブルのヘッダーを更新
-            updateCalendarHeader(currentDate);
-        
-            // 各セルをリセット
-            for (let row of table.rows) {
-                for (let i = 1; i < row.cells.length; i++) {
-                    const cell = row.cells[i];
-                    cell.textContent = '';
-                    cell.removeAttribute('data-date');
-                    cell.classList.remove('available', 'unavailable', 'selected');
-                    cell.style.backgroundColor = '';
-                    cell.style.color = '';
-                }
-            }
-        
-            // 現在の日時を取得
-            const now = new Date();
-        
-            // テーブルの内容を更新
-            for (let i = 0; i < 7; i++) {
-                const day = new Date(currentDate);
-                day.setDate(day.getDate() + i);
-        
-                for (let j = 0; j < times.length; j++) {
-                    const cell = table.rows[j].cells[i + 1];
-                
-                    const slotStart = new Date(day);
-                    slotStart.setHours(parseInt(times[j].split(':')[0]), parseInt(times[j].split(':')[1]), 0, 0);
-                
-                    const slotEnd = new Date(slotStart);
-                    let menuDuration = selectedMenuTime || 90; 
-                    slotEnd.setMinutes(slotEnd.getMinutes() + menuDuration);
-                
-                    // data-date属性を設定
-                    cell.setAttribute('data-date', slotStart.toISOString());
-                
-                    // --- 既に予約が入っているかチェック ---
-                    const hasBooking = availability.some(slot => {
-                        if (slot.summary === "営業日" || slot.title === "営業日") return false; // 営業日イベントは除外
-                        const eventStart = new Date(slot.startTime);
-                        const eventEnd = new Date(slot.endTime);
-                        // 時間が重なっていれば予約あり
-                        return eventStart < slotEnd && slotStart < eventEnd;
-                    });
-                
-                    if (slotStart < now || hasBooking) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        cell.style.color = 'red';
-                        continue;
-                    }
-                
-                    // --- 営業日判定 ---
-                    const isBusinessDay = businessDays.some(businessDay => {
-                        return slotStart >= new Date(businessDay.start) && slotEnd <= new Date(businessDay.end);
-                    });
-                
-                    if (isBusinessDay) {
-                        cell.textContent = '◯';
-                        cell.classList.add('available');
-                        cell.style.color = 'green';
-                    } else {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        cell.style.color = 'red';
-                    }
-                }
-            }
-        
-            console.log('Calendar updated successfully - 1コマ最大1予約制限適用');
-        }
-        
-        // 予約確認用のヘルパー関数（デバッグ用）
-        function checkSlotAvailability(slotStart, slotEnd, availability) {
-            const conflicts = availability.filter(slot => {
-                if (slot.summary === "営業日" || slot.title === "営業日") {
-                    return false;
-                }
-                
-                const eventStart = new Date(slot.startTime);
-                const eventEnd = new Date(slot.endTime);
-                
-                return (eventStart < slotEnd && slotStart < eventEnd);
-            });
-            
-            return {
-                isAvailable: conflicts.length === 0,
-                conflictCount: conflicts.length,
-                conflicts: conflicts
-            };
-        }
-
-        function updateCalendarHeader(date) {
-            const headerRow = document.getElementById('calendar-header');
-            if (!headerRow) {
-                console.error('Calendar header not found');
-                return;
-            }
-
-            const headers = headerRow.querySelectorAll('th:not(:first-child)');
-
-            const holidays = [
-                '2025-02-11', '2025-02-23', '2025-02-24', '2025-03-20', '2025-04-29',
-                '2025-05-03', '2025-05-04', '2025-05-05', '2025-05-06', '2025-07-21',
-                '2025-08-11', '2025-09-15', '2025-09-23', '2025-10-13', '2025-11-03',
-                '2025-11-23', '2025-11-24'
-            ];
-
-            const startDate = new Date(date);
-            headers.forEach((th, index) => {
-                const day = new Date(startDate);
-                day.setDate(day.getDate() + index);
-
-                const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
-                const formattedDate = `${day.getFullYear()}-${(day.getMonth() + 1).toString().padStart(2, '0')}-${day.getDate().toString().padStart(2, '0')}`;
-                const dayString = `${day.getDate()}(${dayOfWeek[day.getDay()]})`;
-
-                th.innerHTML = dayString.replace('(', '<br>(');
-
-                if (holidays.includes(formattedDate) || day.getDay() === 0) {
-                    th.style.color = 'red';
-                } else if (day.getDay() === 6) {
-                    th.style.color = 'blue';
-                } else {
-                    th.style.color = '';
-                }
-            });
-
-            const currentMonthElement = document.getElementById('currentMonth');
-            if (currentMonthElement) {
-                currentMonthElement.innerHTML = `<span class="year">${startDate.getFullYear()}年</span><br><span class="month">${startDate.getMonth() + 1}月</span>`;
-            }
-        }
-
-        function nextWeek() {
-            currentDate.setDate(currentDate.getDate() + 7);
-            fetchAvailability(currentDate);
-        }
-
-        function previousWeek() {
-            currentDate.setDate(currentDate.getDate() - 7);
-            fetchAvailability(currentDate);
-        }
-
-        function nextmonth() {
-            currentDate.setMonth(currentDate.getMonth() + 1);
-            currentDate.setDate(1);
-            fetchAvailability(currentDate);
-        }
-
-        function previousmonth() {
-            currentDate.setMonth(currentDate.getMonth() - 1);
-            currentDate.setDate(1);
-            fetchAvailability(currentDate);
-        }
-
-        function showLoadingSpinner() {
-            const spinner = document.getElementById('loadingSpinner');
-            if (spinner) {
-                spinner.style.display = 'block';
-            }
-        }
-
-        function hideLoadingSpinner() {
-            const spinner = document.getElementById('loadingSpinner');
-            if (spinner) {
-                spinner.style.display = 'none';
-            }
-        }
-
-        function submitForm() {
-            const nameInput = document.getElementById('name');
-            const phoneInput = document.getElementById('phone');
-            const messageInput = document.getElementById('message');
-
-            const formData = {
-                name: nameInput ? nameInput.value.trim() : '',
-                phone: phoneInput ? phoneInput.value.trim() : '',
-                selectedSymptom: selectedSymptom && selectedSymptom.length > 0 ? selectedSymptom : null,
-                dates: selectedFullDate ? [selectedFullDate] : null,
-                message: messageInput ? messageInput.value.trim() : ''
-            };
-
-            if (!formData.name) {
-                alert('お名前を入力してください。');
-                return;
-            }
-
-            if (!formData.selectedSymptom) {
-                alert('メニューを選択してください。');
-                return;
-            }
-
-            if (!formData.dates) {
-                alert('希望日時を選択してください。');
-                return;
-            }
-
-            liff.sendMessages([{
-                type: 'text',
-                text: `【予約フォーム】\nお名前：${formData.name}\n希望日時：\n ${formData.dates[0]}\nメニュー：${formData.selectedSymptom}\nメッセージ：${formData.message}`
-            }]).then(() => {
-                alert('当日キャンセルは無いようにお願いいたします。キャンセル料発生いたします。');
-                liff.closeWindow();
-            }).catch((err) => {
-                console.error('メッセージの送信に失敗しました', err);
-            });
-        }
-        function formatDate(dateStr) {
-            if (!dateStr) return '';
-            const date = new Date(dateStr);
-            return `${date.getFullYear()}年${('0' + (date.getMonth() + 1)).slice(-2)}月${('0' + date.getDate()).slice(-2)}日 ${('0' + date.getHours()).slice(-2)}:${('0' + date.getMinutes()).slice(-2)}`;
-        }
-
-        async function fetchAvailability(date) {
-            const startTime = new Date(date);
-            const endTime = new Date(date);
-            endTime.setDate(endTime.getDate() + 7);
-
-            const cacheKey = startTime.toISOString() + endTime.toISOString();
-
-            // キャッシュを確認
-            if (availabilityCache[cacheKey]) {
-                console.log('Using cached data');
-                updateCalendar(availabilityCache[cacheKey].availability, availabilityCache[cacheKey].businessDays);
-                return;
-            }
-
-            const url = 'https://script.google.com/macros/s/AKfycbwaeisSr_4LEaQVr8r-XI8ALdUeFPQp6F0fBnOUT8bnGYG0vg2Iya-kmbsJbazcKzbnAw/exec' +
-                `?startTime=${startTime.toISOString()}&endTime=${endTime.toISOString()}`;
-
-            try {
-                showLoadingSpinner(); // Show loading spinner
-                const response = await fetch(url);
-                const data = await response.json();
-                console.log(data);
-
-                // 営業日の情報を抽出
-                const businessDays = data.filter(event => event.summary === "営業日").map(event => {
-                    return {
-                        start: new Date(event.startTime),
-                        end: new Date(event.endTime)
-                    };
-                });
-
-                // データをキャッシュに保存
-                availabilityCache[cacheKey] = { availability: data, businessDays: businessDays };
-
-                updateCalendar(data, businessDays);
-            } catch (error) {
-                console.error('Error fetching availability:', error);
-            } finally {
-                hideLoadingSpinner(); // Hide loading spinner
-            }
-        }
-
-        function updateCalendar(availability, businessDays) {
-            const calendar = document.getElementById('calendar1');
-            const table = calendar.querySelector('table tbody');
-
-            const times = [
-                '10:00', '10:30', '11:00', '11:30',
-                '12:00', '12:30', '13:00', '13:30',
-                '14:00', '14:30', '15:00', '15:30',
-                '16:00', '16:30', '17:00', '17:30',
-                '18:00', '18:30', '19:00'
-            ];
-
-            if (table.rows.length === 0) {
-                for (const time of times) {
-                    const row = document.createElement('tr');
-                    const timeCell = document.createElement('td');
-                    timeCell.textContent = time;
-                    row.appendChild(timeCell);
-
-                    for (let i = 0; i < 7; i++) {
-                        const cell = document.createElement('td');
-                        cell.addEventListener('click', () => selectDate(cell));
-                        row.appendChild(cell);
-                    }
-
-                    table.appendChild(row);
-                }
-            }
-
-            // テーブルのヘッダーを更新
-            updateCalendarHeader(currentDate);
-
-            // 各セルを空白にリセットし、クラスもリセット
-            for (let row of table.rows) {
-                for (let i = 1; i < row.cells.length; i++) {
-                    row.cells[i].textContent = '';
-                    row.cells[i].removeAttribute('data-date');
-                    row.cells[i].classList.remove('available', 'unavailable', 'selected');
-                }
-            }
-
-
-            // 現在の日時を取得
-            const now = new Date();
-
-            // テーブルの内容を更新
-            for (let i = 0; i < 7; i++) {
-                const day = new Date(currentDate);
-                day.setDate(day.getDate() + i);
-
-                let businessEventTimes = []; // 営業日のイベント時間帯を記録する配列
-
-                availability.forEach(slot => {
-                    const eventStart = new Date(slot.startTime);
-                    const eventEnd = new Date(slot.endTime);
-                    if (eventStart.toDateString() === day.toDateString() && slot.title === "営業日") {
-                        businessEventTimes.push({ start: eventStart, end: eventEnd });
-                    }
-                });
-
-                for (let j = 0; j < times.length; j++) {
-                    const cell = table.rows[j].cells[i + 1];
-
-                    // すでにセルが✕の場合はスキップする
-                    if (cell.textContent === '✕') {
-                        continue;
-                    }
-
-                    const slotStart = new Date(day);
-                    slotStart.setHours(parseInt(times[j].split(':')[0]), parseInt(times[j].split(':')[1]), 0, 0);
-
-                    const slotEnd = new Date(slotStart);
-                    let menuDuration = selectedMenuTime || 10;
-                    let visitDuration = selectedVisitTime || 0;
-                    slotEnd.setMinutes(slotEnd.getMinutes() + menuDuration + visitDuration);
-
-
-                    // 終了時間が翌日 (0時以降) になる場合は✕に設定
-                    if (slotEnd.getDate() !== slotStart.getDate()) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        continue;
-                    }
-
-                    // ここで終了時間を使った条件処理を行う
-                    // 例えば、リアルタイムで既に過ぎた時間帯は×にする
-                    if (slotStart < now) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        continue;
-                    }
-
-                    const isBusinessDay = businessDays.some(businessDay => {
-                        const businessDayStart = new Date(businessDay.start);
-                        const businessDayEnd = new Date(businessDay.end);
-                        return slotStart >= businessDayStart && slotEnd <= businessDayEnd;
-                    });
-
-                    const isBusinessEventTime = businessEventTimes.some(event => {
-                        return slotStart < event.end && event.start < slotEnd;
-                    });
-
-                    const count = availability.reduce((acc, slot) => {
-                        const eventStart = new Date(slot.startTime);
-                        const eventEnd = new Date(slot.endTime);
-
-                        if (eventStart < slotEnd && slotStart < eventEnd && slot.title !== "営業日") {
-                            return acc + 1;
-                        }
-                        return acc;
-                    }, 0);
-
-                    // 営業日のイベント時間内に他のイベントがある場合
-                    if (isBusinessEventTime && count > 0) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                    }
-                    // 営業日のイベント時間（他のイベントがない場合）
-                    else if (isBusinessEventTime) {
-                        cell.textContent = '◯';
-                        cell.classList.add('available');
-                    }
-                    // 営業日で、指定されている時間以外の時間は×
-                    else if (businessEventTimes.length > 0) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                    }
-                    // 日曜日で、営業日ではない場合
-                    else if (slotStart.getDay() === 0 && !isBusinessDay && businessEventTimes.length === 0) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                    }
-                    // 営業日でかつ他のイベントがない場合
-                    else if (isBusinessDay && count === 0) {
-                        cell.textContent = '◯';
-                        cell.classList.add('available');
-                    }
-                    // それ以外の条件
-                    else if (count === 0) {
-                        cell.textContent = '◯';
-                        cell.classList.add('available');
-                    } else {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                    }
-
-                    cell.setAttribute('data-date', slotStart.toISOString());
-                }
-            }
-        }
-
-        function updateCalendarHeader(date) {
-            const headerRow = document.getElementById('calendar-header');
-            const headers = headerRow.querySelectorAll('th:not(:first-child)');
-
-            // サンプルの祝日データ（必要に応じて動的に取得も検討）
-            const holidays = [
-                '2025-02-11', // 建国記念の日
-                '2025-02-23', // 天皇誕生日
-                '2025-02-24', // 天皇誕生日 振替休日
-                '2025-03-20', // 春分の日
-                '2025-04-29', // 昭和の日
-                '2025-05-03', // 憲法記念日
-                '2025-05-04', // みどりの日
-                '2025-05-05', // こどもの日
-                '2025-05-06', // みどりの日 振替休日
-                '2025-07-21', // 海の日
-                '2025-08-11', // 山の日
-                '2025-09-15', // 敬老の日
-                '2025-09-23', // 秋分の日
-                '2025-10-13', // 体育の日
-                '2025-11-03', // 文化の日
-                '2025-11-23', // 勤労感謝の日
-                '2025-11-24', // 勤労感謝の日 振替休日
-                '2026-01-01', // 元日
-                '2026-01-12', // 成人の日
-                '2026-02-11', // 建国記念の日
-                '2026-02-23', // 天皇誕生日
-                '2026-03-20', // 春分の日
-                '2026-04-29', // 昭和の日
-                '2026-05-03', // 憲法記念日
-                '2026-05-04', // 憲法記念日 振替休日
-                '2026-05-05', // みどりの日
-                '2026-05-06', // こどもの日
-                '2026-07-20', // 海の日
-                '2026-08-11', // 山の日
-                '2026-09-21', // 敬老の日
-                '2026-09-22', // 国民の休日
-                '2026-09-23', // 秋分の日
-                '2026-10-12', // 体育の日
-                '2026-11-03', // 文化の日
-                '2026-11-23', // 勤労感謝の日
-                '2027-01-01', // 元日
-                '2027-01-11', // 成人の日
-                '2027-02-11', // 建国記念の日
-                '2027-02-23', // 天皇誕生日
-                '2027-03-20', // 春分の日
-                '2027-04-29', // 昭和の日
-                '2027-05-03', // 憲法記念日
-                '2027-05-04', // みどりの日
-                '2027-05-05', // こどもの日
-                '2027-07-19', // 海の日
-                '2027-08-11', // 山の日
-                '2027-09-20', // 敬老の日
-                '2027-09-23', // 秋分の日
-                '2027-10-11', // 体育の日
-                '2027-11-03', // 文化の日
-                '2027-11-23', // 勤労感謝の日
-                '2028-01-01', // 元日
-                '2028-01-10', // 成人の日
-                '2028-02-11', // 建国記念の日
-                '2028-02-23', // 天皇誕生日
-                '2028-03-20', // 春分の日
-                '2028-04-29', // 昭和の日
-                '2028-05-03', // 憲法記念日
-                '2028-05-04', // みどりの日
-                '2028-05-05', // こどもの日
-                '2028-07-17', // 海の日
-                '2028-08-11', // 山の日
-                '2028-09-18', // 敬老の日
-                '2028-09-22', // 秋分の日
-                '2028-10-09', // 体育の日
-                '2028-11-03', // 文化の日
-                '2028-11-23'  // 勤労感謝の日
-            ];
-
-            const startDate = new Date(date);
-            headers.forEach((th, index) => {
-                const day = new Date(startDate);
-                day.setDate(day.getDate() + index);
-
-                const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'];
-                const formattedDate = `${day.getFullYear()}-${(day.getMonth() + 1).toString().padStart(2, '0')}-${day.getDate().toString().padStart(2, '0')}`;
-                const dayString = `${day.getDate()}(${dayOfWeek[day.getDay()]})`;
-
-                th.innerHTML = dayString.replace('(', '<br>(');
-
-                // 祝日を赤色に変更（曜日判定ではなく完全一致判定）
-                if (holidays.includes(formattedDate)) {
-                    th.style.color = 'red';
-                } else if (day.getDay() === 0) { // 日曜日（赤）
-                    th.style.color = 'red';
-                } else if (day.getDay() === 6) { // 土曜日（青）
-                    th.style.color = 'blue';
-                } else {
-                    th.style.color = ''; // 通常色にリセット
-                }
-            });
-
-            // 現在の月を表示
-            const currentMonthElement = document.getElementById('currentMonth');
-            currentMonthElement.innerHTML = `<span class="year">${startDate.getFullYear()}年</span><br><span class="month">${startDate.getMonth() + 1}月</span>`;
-
-        }
-
-        function nextmonth() {
-            currentDate.setMonth(currentDate.getMonth() + 1); // 翌月に移動
-            currentDate.setDate(1); // 1日に設定
-            fetchAvailability(currentDate);
-        }
-
-        function previousmonth() {
-            currentDate.setMonth(currentDate.getMonth() - 1); // 前月に移動
-            currentDate.setDate(1); // 1日に設定
-            fetchAvailability(currentDate);
-        }
-
-        function nextWeek() {
-            currentDate.setDate(currentDate.getDate() + 7);
-            fetchAvailability(currentDate);
-        }
-
-        function previousWeek() {
-            currentDate.setDate(currentDate.getDate() - 7);
-            fetchAvailability(currentDate);
-        }
-
-        function showLoadingSpinner() {
-            document.getElementById('loadingSpinner').style.display = 'block';
-        }
-
-        function hideLoadingSpinner() {
-            document.getElementById('loadingSpinner').style.display = 'none';
-        }
-    </script>
+      } else {
+        // 営業日イベントが無い場合のフォールバック
+        // 日曜：✕、それ以外：◯ の営業時間フリー運用
+        withinBusiness = slotStart.getDay() !== 0; // 日曜(0)は休み
+      }
+
+      if (!withinBusiness) {
+        markX(cell);
+        continue;
+      }
+
+      // 4) 予約重複をチェック（営業日イベントは除外）
+      const hasBooking = availability.some(ev => {
+        if (ev.summary === '営業日' || ev.title === '営業日') return false;
+        const es = new Date(ev.startTime);
+        const ee = new Date(ev.endTime);
+        return es < slotEnd && slotStart < ee; // 重なれば予約あり
+      });
+
+      if (hasBooking) {
+        markX(cell);
+      } else {
+        markO(cell);
+      }
+    }
+  }
+}
+
+function markX(cell) {
+  cell.textContent = '✕';
+  cell.classList.add('unavailable');
+  cell.style.color = 'red';
+}
+
+function markO(cell) {
+  cell.textContent = '◯';
+  cell.classList.add('available');
+  cell.style.color = 'green';
+}
+
+/* ---------- ヘッダー（日付・祝日色付け） ---------- */
+
+function updateCalendarHeader(date) {
+  const headerRow = document.getElementById('calendar-header');
+  if (!headerRow) return;
+
+  const headers = headerRow.querySelectorAll('th:not(:first-child)');
+
+  // 祝日（必要に応じて更新）
+  const holidays = [
+    '2025-02-11', '2025-02-23', '2025-02-24', '2025-03-20', '2025-04-29',
+    '2025-05-03', '2025-05-04', '2025-05-05', '2025-05-06', '2025-07-21',
+    '2025-08-11', '2025-09-15', '2025-09-23', '2025-10-13', '2025-11-03',
+    '2025-11-23', '2025-11-24'
+  ];
+
+  const startDate = new Date(date);
+
+  headers.forEach((th, idx) => {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + idx);
+
+    const dow = ['日', '月', '火', '水', '木', '金', '土'];
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const formatted = `${yyyy}-${mm}-${dd}`;
+    const label = `${d.getDate()}(${dow[d.getDay()]})`;
+
+    th.innerHTML = label.replace('(', '<br>(');
+
+    if (holidays.includes(formatted) || d.getDay() === 0) {
+      th.style.color = 'red';
+    } else if (d.getDay() === 6) {
+      th.style.color = 'blue';
+    } else {
+      th.style.color = '';
+    }
+  });
+
+  const currentMonthElement = document.getElementById('currentMonth');
+  if (currentMonthElement) {
+    currentMonthElement.innerHTML =
+      `<span class="year">${startDate.getFullYear()}年</span><br><span class="month">${startDate.getMonth() + 1}月</span>`;
+  }
+}
+
+/* ---------- 週/月ナビ ---------- */
+
+function nextWeek() {
+  currentDate.setDate(currentDate.getDate() + 7);
+  fetchAvailability(currentDate);
+}
+
+function previousWeek() {
+  currentDate.setDate(currentDate.getDate() - 7);
+  fetchAvailability(currentDate);
+}
+
+function nextmonth() {
+  currentDate.setMonth(currentDate.getMonth() + 1);
+  currentDate.setDate(1);
+  fetchAvailability(currentDate);
+}
+
+function previousmonth() {
+  currentDate.setMonth(currentDate.getMonth() - 1);
+  currentDate.setDate(1);
+  fetchAvailability(currentDate);
+}
+
+/* ---------- スピナー ---------- */
+
+function showLoadingSpinner() {
+  const sp = document.getElementById('loadingSpinner');
+  if (sp) sp.style.display = 'block';
+}
+
+function hideLoadingSpinner() {
+  const sp = document.getElementById('loadingSpinner');
+  if (sp) sp.style.display = 'none';
+}
+
+/* ---------- 送信 ---------- */
+
+function submitForm() {
+  const nameInput = document.getElementById('name');
+  const phoneInput = document.getElementById('phone');
+  const messageInput = document.getElementById('message');
+
+  const formData = {
+    name: nameInput ? nameInput.value.trim() : '',
+    phone: phoneInput ? phoneInput.value.trim() : '',
+    selectedSymptom: selectedSymptom?.length > 0 ? selectedSymptom : null,
+    dates: selectedFullDate ? [selectedFullDate] : null,
+    message: messageInput ? messageInput.value.trim() : ''
+  };
+
+  if (!formData.name) return alert('お名前を入力してください。');
+  if (!formData.selectedSymptom) return alert('メニューを選択してください。');
+  if (!formData.dates) return alert('希望日時を選択してください。');
+
+  liff.sendMessages([{
+    type: 'text',
+    text:
+      `【予約フォーム】\n` +
+      `お名前：${formData.name}\n` +
+      `希望日時：\n ${formData.dates[0]}\n` +
+      `メニュー：${formData.selectedSymptom}\n` +
+      `メッセージ：${formData.message}`
+  }]).then(() => {
+    alert('当日キャンセルは無いようにお願いいたします。キャンセル料発生いたします。');
+    liff.closeWindow();
+  }).catch(err => {
+    console.error('メッセージの送信に失敗しました', err);
+  });
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, '0')}月${String(d.getDate()).padStart(2, '0')}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+</script>
 </body>
 
 </html>
