@@ -1176,85 +1176,43 @@
         
                 for (let j = 0; j < times.length; j++) {
                     const cell = table.rows[j].cells[i + 1];
-        
+                
                     const slotStart = new Date(day);
                     slotStart.setHours(parseInt(times[j].split(':')[0]), parseInt(times[j].split(':')[1]), 0, 0);
-        
+                
                     const slotEnd = new Date(slotStart);
-                    let menuDuration = selectedMenuTime || 90; // デフォルト90分
+                    let menuDuration = selectedMenuTime || 90; 
                     slotEnd.setMinutes(slotEnd.getMinutes() + menuDuration);
-        
+                
                     // data-date属性を設定
                     cell.setAttribute('data-date', slotStart.toISOString());
-        
-                    // 過去の時間は×
-                    if (slotStart < now) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        cell.style.color = 'red';
-                        continue;
-                    }
-        
-                    // 終了時間が翌日になる場合は×
-                    if (slotEnd.getDate() !== slotStart.getDate()) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        cell.style.color = 'red';
-                        continue;
-                    }
-        
-                    // 営業日かチェック
-                    const isBusinessDay = businessDays.some(businessDay => {
-                        const businessDayStart = new Date(businessDay.start);
-                        const businessDayEnd = new Date(businessDay.end);
-                        return slotStart >= businessDayStart && slotEnd <= businessDayEnd;
-                    });
-        
-                    // ★★★ 1コマ最大1予約の制限チェック ★★★
-                    // この時間枠に重複する予約（営業日以外）の数をカウント
-                    const conflictingBookings = availability.filter(slot => {
-                        if (slot.summary === "営業日" || slot.title === "営業日") {
-                            return false; // 営業日イベントは除外
-                        }
-        
+                
+                    // --- 既に予約が入っているかチェック ---
+                    const hasBooking = availability.some(slot => {
+                        if (slot.summary === "営業日" || slot.title === "営業日") return false; // 営業日イベントは除外
                         const eventStart = new Date(slot.startTime);
                         const eventEnd = new Date(slot.endTime);
-                        
-                        // 時間が重複するかチェック
-                        return (eventStart < slotEnd && slotStart < eventEnd);
+                        // 時間が重なっていれば予約あり
+                        return eventStart < slotEnd && slotStart < eventEnd;
                     });
-        
-                    // 1つでも予約があれば、その時間枠は×
-                    const hasBooking = conflictingBookings.length > 0;
-        
-                    // 日曜日で営業日でない場合は×
-                    if (slotStart.getDay() === 0 && !isBusinessDay) {
+                
+                    if (slotStart < now || hasBooking) {
                         cell.textContent = '✕';
                         cell.classList.add('unavailable');
                         cell.style.color = 'red';
+                        continue;
                     }
-                    // 既に予約が入っている場合は× (1コマ最大1予約制限)
-                    else if (hasBooking) {
-                        cell.textContent = '✕';
-                        cell.classList.add('unavailable');
-                        cell.style.color = 'red';
-                        // デバッグ用ログ
-                        console.log(`時間枠 ${times[j]} (${day.toDateString()}) は予約済み:`, conflictingBookings.length, '件');
-                    }
-                    // 営業日で予約がない場合は○
-                    else if (isBusinessDay) {
+                
+                    // --- 営業日判定 ---
+                    const isBusinessDay = businessDays.some(businessDay => {
+                        return slotStart >= new Date(businessDay.start) && slotEnd <= new Date(businessDay.end);
+                    });
+                
+                    if (isBusinessDay) {
                         cell.textContent = '◯';
                         cell.classList.add('available');
                         cell.style.color = 'green';
-                    }
-                    // 平日（月-土）で予約がない場合は○
-                    else if (slotStart.getDay() !== 0) {
-                        cell.textContent = '◯';
-                        cell.classList.add('available');
-                        cell.style.color = 'green';
-                    }
-                    // その他は×
-                    else {
+                    } else {
                         cell.textContent = '✕';
                         cell.classList.add('unavailable');
                         cell.style.color = 'red';
