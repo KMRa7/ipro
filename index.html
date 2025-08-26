@@ -1289,7 +1289,7 @@ function submitForm() {
       `メニュー：${formData.selectedSymptom}\n` +
       `メッセージ：${formData.message}`
   }]).then(() => {
-    alert('当日キャンセルは無いようにお願いいたします。キャンセル料発生いたします。');
+    alert('キャンセルの場合はLINEのチャット又は電話にてお知らせください。');
     liff.closeWindow();
   }).catch(err => {
     console.error('メッセージの送信に失敗しました', err);
