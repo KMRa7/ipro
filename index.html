@@ -1108,19 +1108,19 @@
 
         function updateCalendar(availability, businessDays) {
             console.log('Updating calendar with:', availability.length, 'events');
-        
+
             const calendar = document.getElementById('calendar1');
             if (!calendar) {
                 console.error('Calendar element not found');
                 return;
             }
-        
+
             const table = calendar.querySelector('table tbody');
             if (!table) {
                 console.error('Calendar table body not found');
                 return;
             }
-        
+
             const times = [
                 '10:00', '10:30', '11:00', '11:30',
                 '12:00', '12:30', '13:00', '13:30',
@@ -1128,7 +1128,7 @@
                 '16:00', '16:30', '17:00', '17:30',
                 '18:00', '18:30', '19:00'
             ];
-        
+
             // テーブルが空の場合、行を作成
             if (table.rows.length === 0) {
                 console.log('Creating calendar table structure');
@@ -1138,7 +1138,7 @@
                     timeCell.textContent = time;
                     timeCell.style.fontWeight = 'bold';
                     row.appendChild(timeCell);
-        
+
                     for (let i = 0; i < 7; i++) {
                         const cell = document.createElement('td');
                         cell.style.cursor = 'pointer';
@@ -1146,14 +1146,14 @@
                         cell.addEventListener('click', () => selectDate(cell));
                         row.appendChild(cell);
                     }
-        
+
                     table.appendChild(row);
                 }
             }
-        
+
             // テーブルのヘッダーを更新
             updateCalendarHeader(currentDate);
-        
+
             // 各セルをリセット
             for (let row of table.rows) {
                 for (let i = 1; i < row.cells.length; i++) {
@@ -1165,28 +1165,28 @@
                     cell.style.color = '';
                 }
             }
-        
+
             // 現在の日時を取得
             const now = new Date();
-        
+
             // テーブルの内容を更新
             for (let i = 0; i < 7; i++) {
                 const day = new Date(currentDate);
                 day.setDate(day.getDate() + i);
-        
+
                 for (let j = 0; j < times.length; j++) {
                     const cell = table.rows[j].cells[i + 1];
-        
+
                     const slotStart = new Date(day);
                     slotStart.setHours(parseInt(times[j].split(':')[0]), parseInt(times[j].split(':')[1]), 0, 0);
-        
+
                     const slotEnd = new Date(slotStart);
                     let menuDuration = selectedMenuTime || 90; // デフォルト90分
                     slotEnd.setMinutes(slotEnd.getMinutes() + menuDuration);
-        
+
                     // data-date属性を設定
                     cell.setAttribute('data-date', slotStart.toISOString());
-        
+
                     // 過去の時間は×
                     if (slotStart < now) {
                         cell.textContent = '✕';
@@ -1194,7 +1194,7 @@
                         cell.style.color = 'red';
                         continue;
                     }
-        
+
                     // 終了時間が翌日になる場合は×
                     if (slotEnd.getDate() !== slotStart.getDate()) {
                         cell.textContent = '✕';
@@ -1202,52 +1202,42 @@
                         cell.style.color = 'red';
                         continue;
                     }
-        
+
                     // 営業日かチェック
                     const isBusinessDay = businessDays.some(businessDay => {
                         const businessDayStart = new Date(businessDay.start);
                         const businessDayEnd = new Date(businessDay.end);
                         return slotStart >= businessDayStart && slotEnd <= businessDayEnd;
                     });
-        
-                    // ★★★ 1コマ最大1予約の制限チェック ★★★
-                    // この時間枠に重複する予約（営業日以外）の数をカウント
-                    const conflictingBookings = availability.filter(slot => {
-                        if (slot.summary === "営業日" || slot.title === "営業日") {
-                            return false; // 営業日イベントは除外
-                        }
-        
+
+                    // 他の予約との重複をチェック
+                    const hasConflict = availability.some(slot => {
+                        if (slot.title === "営業日") return false;
+
                         const eventStart = new Date(slot.startTime);
                         const eventEnd = new Date(slot.endTime);
-                        
-                        // 時間が重複するかチェック
                         return (eventStart < slotEnd && slotStart < eventEnd);
                     });
-        
-                    // 1つでも予約があれば、その時間枠は×
-                    const hasBooking = conflictingBookings.length > 0;
-        
+
                     // 日曜日で営業日でない場合は×
                     if (slotStart.getDay() === 0 && !isBusinessDay) {
                         cell.textContent = '✕';
                         cell.classList.add('unavailable');
                         cell.style.color = 'red';
                     }
-                    // 既に予約が入っている場合は× (1コマ最大1予約制限)
-                    else if (hasBooking) {
+                    // 重複がある場合は×
+                    else if (hasConflict) {
                         cell.textContent = '✕';
                         cell.classList.add('unavailable');
                         cell.style.color = 'red';
-                        // デバッグ用ログ
-                        console.log(`時間枠 ${times[j]} (${day.toDateString()}) は予約済み:`, conflictingBookings.length, '件');
                     }
-                    // 営業日で予約がない場合は○
+                    // 営業日で重複がない場合は○
                     else if (isBusinessDay) {
                         cell.textContent = '◯';
                         cell.classList.add('available');
                         cell.style.color = 'green';
                     }
-                    // 平日（月-土）で予約がない場合は○
+                    // 平日（月-土）で重複がない場合は○
                     else if (slotStart.getDay() !== 0) {
                         cell.textContent = '◯';
                         cell.classList.add('available');
@@ -1261,28 +1251,8 @@
                     }
                 }
             }
-        
-            console.log('Calendar updated successfully - 1コマ最大1予約制限適用');
-        }
-        
-        // 予約確認用のヘルパー関数（デバッグ用）
-        function checkSlotAvailability(slotStart, slotEnd, availability) {
-            const conflicts = availability.filter(slot => {
-                if (slot.summary === "営業日" || slot.title === "営業日") {
-                    return false;
-                }
-                
-                const eventStart = new Date(slot.startTime);
-                const eventEnd = new Date(slot.endTime);
-                
-                return (eventStart < slotEnd && slotStart < eventEnd);
-            });
-            
-            return {
-                isAvailable: conflicts.length === 0,
-                conflictCount: conflicts.length,
-                conflicts: conflicts
-            };
+
+            console.log('Calendar updated successfully');
         }
 
         function updateCalendarHeader(date) {
