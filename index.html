@@ -1048,7 +1048,7 @@ function updateCalendar(availability, businessDays) {
     '12:00', '12:30', '13:00', '13:30',
     '14:00', '14:30', '15:00', '15:30',
     '16:00', '16:30', '17:00', '17:30',
-    '18:00', '18:30', '19:00'
+    '18:00'
   ];
 
   // 初回：行生成
@@ -1141,7 +1141,7 @@ function updateCalendar(availability, businessDays) {
       } else {
         // 営業日イベントが無い場合のフォールバック
         // 日曜：✕、それ以外：◯ の営業時間フリー運用
-        withinBusiness = slotStart.getDay() !== 0; // 日曜(0)は休み
+        withinBusiness = slotStart.getDay() !== 3; // 日曜(0)は休み
       }
 
       if (!withinBusiness) {
