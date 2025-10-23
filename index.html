@@ -664,7 +664,7 @@
           } else {
             // 営業日イベントが無い場合のフォールバック
             // 例：水曜休にしたければ getDay() === 3 を休に
-            withinBusiness = slotStart.getDay() !== 0; // 日曜(0)は休みにする例
+            withinBusiness = slotStart.getDay() !== 3;
           }
 
           if (!withinBusiness) { markX(cell); continue; }
