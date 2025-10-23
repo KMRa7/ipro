@@ -725,6 +725,8 @@
         <div id="treatment-text" style="display: none; margin-bottom: 10px;"></div>
 
         <div class="label" id="course">メニューをお選びください<span class="required">必須</span></div>
+        <div class="info-text">※18時以降での打ち合わせや来館をご希望される方は、メッセージからのお問い合わせお願いします。</div>
+        <div class="info-text">※ウエディング撮影をご希望の方でドレスの試着と撮影を同時にご希望の方はメッセージからのお問い合わせお願いします</div>
         <div class="info-text">※メニューを選択すると空き状況のカレンダーが表示されます</div>
         <div class="symptoms">
             <button type="button" onclick="selectSymptom(this, 'treatment1')" data-price="15000">来店打合せ予約</button>
@@ -787,15 +789,15 @@
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
     <script>
         let selectedSymptom = [];   // 選択中メニュー（配列）
-let selectedFullDate = '';
-let currentDate = new Date();
-let availabilityCache = {};
-let totalAmount = 0;
-let menuPrice = 0;
-let optionsPrice = 0;
-let totalMinutes = 0;
-let selectedVisitTime = 0;  // 訪問時間（必要ならボタンで設定）
-let selectedMenuTime = 0;   // メニュー所要時間（分）
+        let selectedFullDate = '';
+        let currentDate = new Date();
+        let availabilityCache = {};
+        let totalAmount = 0;
+        let menuPrice = 0;
+        let optionsPrice = 0;
+        let totalMinutes = 0;
+        let selectedVisitTime = 0;  // 訪問時間（必要ならボタンで設定）
+        let selectedMenuTime = 0;   // メニュー所要時間（分）
 
 // メニューの基準時間
 const menuTimes = {
