@@ -467,7 +467,7 @@
 
       if (button.classList.contains('active')) {
         const selectedMenu = button.textContent.trim();
-        selectedMenuTime = menuTimes[selectedMenu] ?? 90; // デフォルト90分
+        selectedMenuTime = menuTimes[selectedMenu] ?? 60; // デフォルト90分
         selectedSymptom = [selectedMenu];
         menuPrice = parseInt(button.getAttribute('data-price'), 10) || 0;
 
